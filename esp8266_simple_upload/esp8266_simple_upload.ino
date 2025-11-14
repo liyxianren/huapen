@@ -192,6 +192,7 @@ void receiveAndForwardNanoData() {
         if (hasRequiredFields) {
           // 转换短协议为长协议
           String longProtocolJson = convertToLongProtocol(receivedString);
+          
           Serial.println("发送: " + longProtocolJson);
 
           // 使用转换后的长协议JSON
@@ -206,8 +207,13 @@ void receiveAndForwardNanoData() {
 
           int httpCode = http.POST(receivedString);
 
-          if (httpCode == 200) {
-            Serial.println("上传成功");
+          if (httpCode == 200 || httpCode == 201) {
+            Serial.println("上传成功 HTTP: " + String(httpCode));
+
+            // 向NANO发送成功状态
+            nanoSerial.println("OK");
+            nanoSerial.flush();
+
             // 成功闪烁3次
             for (int i = 0; i < 3; i++) {
               digitalWrite(LED_BUILTIN, LOW);
@@ -216,7 +222,11 @@ void receiveAndForwardNanoData() {
               delay(100);
             }
           } else {
-            Serial.println("上传失败: " + String(httpCode));
+            Serial.println("上传失败 HTTP: " + String(httpCode));
+
+            // 向NANO发送失败状态
+            nanoSerial.println("FAIL:" + String(httpCode));
+            nanoSerial.flush();
           }
 
           http.end();

@@ -169,7 +169,41 @@ void sendDataToESP8266() {
   esp8266.println(jsonString);
   esp8266.flush();
 
-  Serial.println("=== 数据发送完成 ===");
+  Serial.println("数据已发送，等待ESP8266响应...");
+
+  // 等待ESP8266响应 (最多等待10秒)
+  unsigned long startTime = millis();
+  const unsigned long RESPONSE_TIMEOUT = 10000;  // 10秒超时
+  String response = "";
+
+  while (millis() - startTime < RESPONSE_TIMEOUT) {
+    if (esp8266.available() > 0) {
+      response = esp8266.readStringUntil('\n');
+      response.trim();
+
+      if (response.length() > 0) {
+        Serial.println("收到ESP8266响应: " + response);
+
+        // 检查响应内容
+        if (response == "OK") {
+          Serial.println("✅ 数据上传成功！");
+          break;
+        } else if (response.startsWith("FAIL")) {
+          Serial.println("❌ 数据上传失败: " + response);
+          Serial.println("⚠️ 本次数据更新已抛弃");
+          break;
+        }
+      }
+    }
+    delay(10);  // 短暂延时，避免过度占用CPU
+  }
+
+  // 检查是否超时
+  if (response.length() == 0 || (!response.equals("OK") && !response.startsWith("FAIL"))) {
+    Serial.println("⏱️ 等待ESP8266响应超时或收到无效响应");
+  }
+
+  Serial.println("=== 数据发送流程结束 ===");
   Serial.println();
 }
 
