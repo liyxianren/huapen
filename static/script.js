@@ -259,15 +259,31 @@ function updateTable() {
     });
 }
 
-// 格式化时间
+// 格式化时间 - 确保显示北京时间
 function formatTime(timestamp, shortFormat = false) {
-    const date = new Date(timestamp);
+    let date;
 
+    // 处理不同的时间戳格式
+    if (typeof timestamp === 'string') {
+        // 如果时间戳已经包含时区信息（如 ISO 格式），直接使用
+        if (timestamp.includes('T') && (timestamp.includes('Z') || timestamp.includes('+'))) {
+            date = new Date(timestamp);
+        } else {
+            // 如果是数据库返回的格式 '2025-11-14 09:11:34'，假设是北京时间
+            // 因为数据库现在存储的就是北京时间
+            date = new Date(timestamp);
+        }
+    } else {
+        date = new Date(timestamp);
+    }
+
+    // 直接使用 toLocaleString 指定 Asia/Shanghai 时区
     if (shortFormat) {
         return date.toLocaleTimeString('zh-CN', {
             hour: '2-digit',
             minute: '2-digit',
-            second: '2-digit'
+            second: '2-digit',
+            timeZone: 'Asia/Shanghai'
         });
     }
 
@@ -277,7 +293,8 @@ function formatTime(timestamp, shortFormat = false) {
         day: '2-digit',
         hour: '2-digit',
         minute: '2-digit',
-        second: '2-digit'
+        second: '2-digit',
+        timeZone: 'Asia/Shanghai'
     });
 }
 
@@ -723,7 +740,12 @@ function addLog(type, message, data = null) {
     const logEntry = document.createElement('div');
     logEntry.className = `log-entry log-${type}`;
 
-    const timestamp = new Date().toLocaleTimeString('zh-CN');
+    const timestamp = new Date().toLocaleTimeString('zh-CN', {
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    timeZone: 'Asia/Shanghai'
+  });
     let messageHtml = `
         <span class="log-time">[${timestamp}]</span>
         <span class="log-message">${message}</span>

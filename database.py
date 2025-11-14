@@ -2,6 +2,7 @@ import sqlite3
 import json
 from datetime import datetime, timedelta
 import os
+import pytz
 
 class SensorDatabase:
     def __init__(self, db_path="sensor_data.db"):
@@ -82,7 +83,9 @@ class SensorDatabase:
         conn = sqlite3.connect(self.db_path)
         cursor = conn.cursor()
 
-        now = datetime.now()
+        # 使用北京时间 (UTC+8)
+        beijing_tz = pytz.timezone('Asia/Shanghai')
+        now = datetime.now(beijing_tz)
         timestamp = now.isoformat()
         created_at = now.strftime('%Y-%m-%d %H:%M:%S')
         year = now.year
