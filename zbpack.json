@@ -1,0 +1,5 @@
+{
+  "app_name": "ESP8266 Sensor System",
+  "build_command": "pip install -r requirements.txt",
+  "start_command": "gunicorn app_sqlite:app -b 0.0.0.0:$PORT"
+}

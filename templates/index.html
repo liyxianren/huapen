@@ -1,0 +1,165 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP8266 传感器数据监控</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header class="header">
+            <h1 class="title">ESP8266 传感器监控系统</h1>
+            <div class="status-indicator">
+                <div class="status-dot" id="statusDot"></div>
+                <span id="statusText">连接中...</span>
+            </div>
+        </header>
+
+        <div class="main-content">
+            <!-- 实时数据卡片 -->
+            <div class="cards-grid">
+                <div class="card humidity-card">
+                    <div class="card-icon">💧</div>
+                    <div class="card-content">
+                        <h3>湿度</h3>
+                        <div class="card-value" id="humidity">--</div>
+                        <div class="card-unit">%</div>
+                    </div>
+                    <div class="card-trend" id="humidityTrend"></div>
+                </div>
+
+                <div class="card temperature-card">
+                    <div class="card-icon">🌡️</div>
+                    <div class="card-content">
+                        <h3>温度</h3>
+                        <div class="card-value" id="temperature">--</div>
+                        <div class="card-unit">°C</div>
+                    </div>
+                    <div class="card-trend" id="temperatureTrend"></div>
+                </div>
+
+                <div class="card light-card">
+                    <div class="card-icon">☀️</div>
+                    <div class="card-content">
+                        <h3>光照强度</h3>
+                        <div class="card-value" id="lightIntensity">--</div>
+                        <div class="card-unit">lux</div>
+                    </div>
+                    <div class="card-trend" id="lightTrend"></div>
+                </div>
+
+                <div class="card info-card">
+                    <div class="card-icon">📊</div>
+                    <div class="card-content">
+                        <h3>数据统计</h3>
+                        <div class="info-item">
+                            <span>总记录数</span>
+                            <span id="totalRecords">0</span>
+                        </div>
+                        <div class="info-item">
+                            <span>最后更新</span>
+                            <span id="lastUpdate">--</span>
+                        </div>
+                        <button class="update-data-btn" id="updateDataBtn" onclick="requestSensorUpdate()">
+                            🔄 更新数据
+                        </button>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 图表区域 -->
+            <div class="charts-section">
+                <div class="chart-container">
+                    <h3>传感器数据趋势</h3>
+                    <canvas id="sensorChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 日期查询区域 -->
+            <div class="query-section">
+                <div class="query-header">
+                    <h3>📅 按日期查询数据</h3>
+                </div>
+                <div class="query-controls">
+                    <div class="date-inputs">
+                        <div class="input-group">
+                            <label for="queryYear">年份</label>
+                            <input type="number" id="queryYear" min="2020" max="2030" value="2025" placeholder="2025">
+                        </div>
+                        <div class="input-group">
+                            <label for="queryMonth">月份</label>
+                            <input type="number" id="queryMonth" min="1" max="12" value="9" placeholder="9">
+                        </div>
+                        <div class="input-group">
+                            <label for="queryDay">日期</label>
+                            <input type="number" id="queryDay" min="1" max="31" value="26" placeholder="26">
+                        </div>
+                        <div class="input-group">
+                            <label for="queryHour">小时 (可选)</label>
+                            <input type="number" id="queryHour" min="0" max="23" placeholder="14">
+                        </div>
+                    </div>
+                    <div class="query-buttons">
+                        <button class="query-btn" id="queryByDateBtn">按日期查询</button>
+                        <button class="query-btn" id="queryByHourBtn">按小时查询</button>
+                        <button class="reset-btn" id="resetQueryBtn">重置查询</button>
+                    </div>
+                </div>
+                <div class="query-result-info" id="queryResultInfo">
+                    <span id="queryResultText">显示所有数据</span>
+                    <span id="queryResultCount"></span>
+                </div>
+            </div>
+
+            <!-- 日志窗口 -->
+            <div class="log-section">
+                <div class="log-header">
+                    <h3>📡 网站通信日志</h3>
+                    <div class="log-controls">
+                        <button class="log-btn" id="clearLogBtn">清空日志</button>
+                        <button class="log-btn" id="toggleLogBtn">暂停</button>
+                    </div>
+                </div>
+                <div class="log-container" id="logContainer">
+                    <div class="log-content" id="logContent">
+                        <div class="log-entry log-info">
+                            <span class="log-time">[系统]</span>
+                            <span class="log-message">网站通信日志窗口已初始化</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 数据表格 -->
+            <div class="table-section">
+                <div class="table-header">
+                    <h3>历史数据</h3>
+                    <button class="refresh-btn" id="refreshBtn">刷新数据</button>
+                </div>
+                <div class="table-container">
+                    <table id="dataTable">
+                        <thead>
+                            <tr>
+                                <th>时间</th>
+                                <th>湿度 (%)</th>
+                                <th>温度 (°C)</th>
+                                <th>光照 (lux)</th>
+                            </tr>
+                        </thead>
+                        <tbody id="tableBody">
+                            <!-- 数据行将通过JavaScript插入 -->
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+</body>
+</html>

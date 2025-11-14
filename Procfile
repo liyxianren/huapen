@@ -1,0 +1,1 @@
+web: gunicorn app_sqlite:app -b 0.0.0.0:$PORT
