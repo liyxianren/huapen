@@ -1,0 +1,373 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ESP8266 数据管理面板</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .admin-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .admin-header {
+            background: rgba(255, 255, 255, 0.95);
+            padding: 20px 30px;
+            border-radius: 15px;
+            margin-bottom: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            text-align: center;
+        }
+
+        .admin-title {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin: 0;
+        }
+
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .stat-card {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 25px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+        }
+
+        .stat-title {
+            font-size: 1.2rem;
+            font-weight: 600;
+            color: #34495e;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .stat-value {
+            font-size: 2rem;
+            font-weight: 700;
+            color: #2c3e50;
+            margin-bottom: 5px;
+        }
+
+        .stat-subtitle {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+        }
+
+        .range-info {
+            display: flex;
+            justify-content: space-between;
+            margin-top: 10px;
+            font-size: 0.9rem;
+        }
+
+        .range-item {
+            text-align: center;
+        }
+
+        .range-label {
+            color: #7f8c8d;
+            display: block;
+        }
+
+        .range-value {
+            color: #2c3e50;
+            font-weight: 600;
+        }
+
+        .actions-section {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 30px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            margin-bottom: 30px;
+        }
+
+        .actions-title {
+            font-size: 1.5rem;
+            font-weight: 600;
+            color: #2c3e50;
+            margin-bottom: 20px;
+        }
+
+        .action-buttons {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 15px;
+        }
+
+        .action-button {
+            padding: 15px 20px;
+            border: none;
+            border-radius: 10px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            text-decoration: none;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 8px;
+            font-size: 0.9rem;
+        }
+
+        .btn-primary {
+            background: linear-gradient(45deg, #3498db, #2980b9);
+            color: white;
+        }
+
+        .btn-success {
+            background: linear-gradient(45deg, #27ae60, #229954);
+            color: white;
+        }
+
+        .btn-warning {
+            background: linear-gradient(45deg, #f39c12, #e67e22);
+            color: white;
+        }
+
+        .btn-danger {
+            background: linear-gradient(45deg, #e74c3c, #c0392b);
+            color: white;
+        }
+
+        .action-button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.2);
+        }
+
+        .time-info {
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 15px;
+            padding: 20px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.1);
+            backdrop-filter: blur(10px);
+            text-align: center;
+        }
+
+        .time-range {
+            display: flex;
+            justify-content: space-around;
+            margin-top: 15px;
+        }
+
+        .time-item {
+            text-align: center;
+        }
+
+        .time-label {
+            font-size: 0.9rem;
+            color: #7f8c8d;
+            margin-bottom: 5px;
+        }
+
+        .time-value {
+            font-size: 1rem;
+            font-weight: 600;
+            color: #2c3e50;
+        }
+
+        @media (max-width: 768px) {
+            .stats-grid {
+                grid-template-columns: 1fr;
+            }
+
+            .action-buttons {
+                grid-template-columns: 1fr;
+            }
+
+            .time-range {
+                flex-direction: column;
+                gap: 15px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="admin-container">
+        <div class="admin-header">
+            <h1 class="admin-title">ESP8266 数据管理面板</h1>
+            <p>SQLite 数据库管理与统计</p>
+        </div>
+
+        <div class="stats-grid">
+            <!-- 总记录数 -->
+            <div class="stat-card">
+                <div class="stat-title">
+                    📊 总记录数
+                </div>
+                <div class="stat-value">{{ statistics.total_count }}</div>
+                <div class="stat-subtitle">数据库中的传感器记录总数</div>
+            </div>
+
+            <!-- 湿度统计 -->
+            <div class="stat-card">
+                <div class="stat-title">
+                    💧 湿度统计
+                </div>
+                <div class="stat-value">{{ statistics.humidity.avg }}%</div>
+                <div class="stat-subtitle">平均湿度</div>
+                <div class="range-info">
+                    <div class="range-item">
+                        <span class="range-label">最小值</span>
+                        <span class="range-value">{{ statistics.humidity.min }}%</span>
+                    </div>
+                    <div class="range-item">
+                        <span class="range-label">最大值</span>
+                        <span class="range-value">{{ statistics.humidity.max }}%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 温度统计 -->
+            <div class="stat-card">
+                <div class="stat-title">
+                    🌡️ 温度统计
+                </div>
+                <div class="stat-value">{{ statistics.temperature.avg }}°C</div>
+                <div class="stat-subtitle">平均温度</div>
+                <div class="range-info">
+                    <div class="range-item">
+                        <span class="range-label">最小值</span>
+                        <span class="range-value">{{ statistics.temperature.min }}°C</span>
+                    </div>
+                    <div class="range-item">
+                        <span class="range-label">最大值</span>
+                        <span class="range-value">{{ statistics.temperature.max }}°C</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 光照统计 -->
+            <div class="stat-card">
+                <div class="stat-title">
+                    ☀️ 光照统计
+                </div>
+                <div class="stat-value">{{ statistics.light_intensity.avg }}</div>
+                <div class="stat-subtitle">平均光照强度 (lux)</div>
+                <div class="range-info">
+                    <div class="range-item">
+                        <span class="range-label">最小值</span>
+                        <span class="range-value">{{ statistics.light_intensity.min }}</span>
+                    </div>
+                    <div class="range-item">
+                        <span class="range-label">最大值</span>
+                        <span class="range-value">{{ statistics.light_intensity.max }}</span>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 时间信息 -->
+        {% if statistics.time_range.first_record %}
+        <div class="time-info">
+            <h3>数据时间范围</h3>
+            <div class="time-range">
+                <div class="time-item">
+                    <div class="time-label">首次记录</div>
+                    <div class="time-value">{{ statistics.time_range.first_record }}</div>
+                </div>
+                <div class="time-item">
+                    <div class="time-label">最新记录</div>
+                    <div class="time-value">{{ statistics.time_range.last_record }}</div>
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- 操作按钮 -->
+        <div class="actions-section">
+            <h3 class="actions-title">数据库操作</h3>
+            <div class="action-buttons">
+                <a href="/" class="action-button btn-primary">
+                    📊 查看前端
+                </a>
+                <button onclick="exportData()" class="action-button btn-success">
+                    📤 导出数据
+                </button>
+                <button onclick="backupDatabase()" class="action-button btn-warning">
+                    💾 备份数据库
+                </button>
+                <button onclick="refreshStats()" class="action-button btn-primary">
+                    🔄 刷新统计
+                </button>
+                <button onclick="clearAllData()" class="action-button btn-danger">
+                    🗑️ 清空所有数据
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        function exportData() {
+            fetch('/sensor-data/export')
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(`数据导出成功！\n文件: ${data.file_path}\n导出记录: ${data.exported_count} 条`);
+                    } else {
+                        alert('导出失败: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    alert('导出失败: ' + error);
+                });
+        }
+
+        function backupDatabase() {
+            fetch('/sensor-data/backup', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.status === 'success') {
+                        alert(`数据库备份成功！\n备份文件: ${data.backup_path}`);
+                    } else {
+                        alert('备份失败: ' + data.error);
+                    }
+                })
+                .catch(error => {
+                    alert('备份失败: ' + error);
+                });
+        }
+
+        function refreshStats() {
+            window.location.reload();
+        }
+
+        function clearAllData() {
+            if (confirm('确定要清空所有数据吗？此操作不可恢复！')) {
+                if (confirm('再次确认：真的要删除所有传感器数据吗？')) {
+                    fetch('/sensor-data/clear', { method: 'DELETE' })
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.status === 'success') {
+                                alert(`清空成功！删除了 ${data.deleted_count} 条记录。`);
+                                window.location.reload();
+                            } else {
+                                alert('清空失败: ' + data.error);
+                            }
+                        })
+                        .catch(error => {
+                            alert('清空失败: ' + error);
+                        });
+                }
+            }
+        }
+    </script>
+</body>
+</html>
