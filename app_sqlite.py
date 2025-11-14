@@ -497,7 +497,7 @@ def sensor_command():
         print(f"[COMMAND] 提取命令: {command}")
 
         # 验证指令格式
-        if not command.startswith(('Dataup_', 'Watering_')):
+        if not command.startswith(('Dataup_', 'Watering_', 'ServoTurnTo_')):
             print(f"[ERROR] 错误: 无效的命令格式 - {command}")
             return jsonify({
                 'status': 'error',

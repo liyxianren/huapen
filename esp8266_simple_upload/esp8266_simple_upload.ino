@@ -168,7 +168,8 @@ void receiveAndForwardNanoData() {
     Serial.println("接收: " + receivedString);
 
     // 验证JSON格式
-    if (receivedString.length() > 0 && receivedString.startsWith("{") && receivedString.endsWith("}")) {
+    if (receivedString.length() > 0 && receivedString.startsWith("{")
+  && receivedString.endsWith("}")) {
       // 检查是否是有效的JSON
       int braceCount = 0;
       bool validJson = true;

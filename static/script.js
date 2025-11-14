@@ -625,6 +625,83 @@ async function startWatering() {
     }
 }
 
+// 开启遮阳帘功能
+async function openSunshade() {
+    const angleInput = document.getElementById('servoAngle');
+    const btn = document.getElementById('openSunshadeBtn');
+    const angle = parseInt(angleInput.value);
+
+    // 验证输入
+    if (!angle || angle <= 0 || angle > 180) {
+        addLog('error', '❌ 请输入有效的舵机角度（1-180度）');
+        alert('请输入有效的舵机角度（1-180度）');
+        return;
+    }
+
+    const originalText = btn.innerHTML;
+
+    try {
+        // 更新按钮状态
+        btn.disabled = true;
+        btn.innerHTML = '⏳ 发送遮阳帘指令...';
+
+        // 构造遮阳帘指令
+        const commandData = {
+            command: `ServoTurnTo_${angle}`
+        };
+
+        addLog('send', `🚀 网站发送遮阳帘指令给ESP8266`, {
+            command: commandData.command,
+            angle: `${angle}度`
+        });
+
+        // 发送遮阳帘指令到ESP8266
+        const response = await fetch('/sensor-command', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(commandData)
+        });
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            // 指令发送成功
+            addLog('success', `✅ 遮阳帘指令发送成功，舵机将转至${angle}度`, result);
+            btn.innerHTML = `🏠 舵机转动中... (${angle}度)`;
+
+            // 模拟舵机转动时间（约2秒完成）
+            setTimeout(() => {
+                btn.innerHTML = '✅ 遮阳帘已开启';
+                addLog('success', '🎉 遮阳帘开启完成，舵机已到达指定位置');
+
+                // 3秒后恢复按钮状态
+                setTimeout(() => {
+                    btn.innerHTML = originalText;
+                    btn.disabled = false;
+                }, 3000);
+            }, 2000);
+
+        } else {
+            throw new Error(result.message || '遮阳帘指令发送失败');
+        }
+
+    } catch (error) {
+        console.error('发送遮阳帘指令失败:', error);
+        addLog('error', `❌ 发送遮阳帘指令失败: ${error.message}`);
+        btn.innerHTML = '❌ 发送失败';
+        btn.disabled = false;
+
+        // 3秒后恢复按钮状态
+        setTimeout(() => {
+            btn.innerHTML = originalText;
+        }, 3000);
+
+        alert('无法发送遮阳帘指令，请检查ESP8266连接状态');
+    }
+}
+
 // ==================== 日志系统功能 ====================
 
 // 初始化日志系统

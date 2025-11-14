@@ -209,12 +209,12 @@ void sendDataToESP8266() {
 
 //--------------------------------浇水(毫秒)---------
 void Watering(int Time){ 
-  Serial.println("开始浇水,时长"+Time);
+  Serial.println("开始浇水,时长"+String(Time));
 }
 
 //--------------------------------舵机转到(角度)------
 void ServoTurnTo(int angle){ 
-  Serial.println("舵机转至角度"+angle);
+  Serial.println("舵机转至角度"+String(angle));
 }
 
 //----------------------------抓取命令词和参数----------
