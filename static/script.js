@@ -511,8 +511,22 @@ async function requestSensorUpdate() {
             setTimeout(async () => {
                 try {
                     addLog('info', '🔄 开始检查Arduino Nano通过ESP8266发送的传感器数据');
+
+                    // 临时清除查询状态，确保数据更新
+                    const previousQuery = currentQuery;
+                    if (previousQuery) {
+                        addLog('info', `🔧 临时清除查询状态 (${previousQuery.type}查询)，确保数据更新`);
+                    }
+                    currentQuery = null;
+
                     // 获取ESP8266转发的传感器数据
                     await loadData();
+
+                    // 恢复之前的查询状态
+                    currentQuery = previousQuery;
+                    if (previousQuery) {
+                        addLog('info', `🔧 恢复查询状态: ${previousQuery.type}查询`);
+                    }
 
                     btn.classList.remove('updating');
                     btn.innerHTML = '✅ 数据已更新';
@@ -527,6 +541,13 @@ async function requestSensorUpdate() {
                 } catch (error) {
                     console.error('刷新数据失败:', error);
                     addLog('error', `❌ 刷新数据失败: ${error.message}`);
+
+                    // 确保恢复查询状态
+                    currentQuery = previousQuery;
+                    if (previousQuery) {
+                        addLog('warning', `⚠️ 因错误恢复查询状态: ${previousQuery.type}查询`);
+                    }
+
                     btn.classList.remove('updating');
                     btn.innerHTML = '❌ 刷新失败';
                     btn.disabled = false;
