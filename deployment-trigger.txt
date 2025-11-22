@@ -1,1 +1,1 @@
-DEPLOYMENT_TRIGGER
+DEPLOYMENT_TRIGGER - Rollback from SSE implementation
