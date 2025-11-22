@@ -1,6 +1,9 @@
-from flask import Flask, request, jsonify, render_template
+from flask import Flask, request, jsonify, render_template, Response
 from datetime import datetime
 import json
+import threading
+import queue
+import time
 from database import SensorDatabase
 
 app = Flask(__name__)
@@ -9,6 +12,37 @@ app.config['JSON_AS_ASCII'] = False
 
 # 初始化数据库
 db = SensorDatabase("sensor_data.db")
+
+# SSE相关变量
+sse_clients = set()
+data_update_queue = queue.Queue()
+
+def sse_broadcast(data):
+    """广播数据到所有SSE客户端"""
+    global sse_clients
+    if sse_clients:
+        message = f"data: {json.dumps(data)}\n\n"
+        for client in sse_clients.copy():  # 使用copy避免迭代时修改集合
+            try:
+                client.put(message)
+            except:
+                sse_clients.discard(client)
+
+def sse_worker():
+    """SSE工作线程，从队列中获取消息并发送给客户端"""
+    while True:
+        try:
+            message = data_update_queue.get(timeout=1)
+            if message:
+                sse_broadcast(message)
+        except queue.Empty:
+            continue
+        except Exception as e:
+            print(f"SSE worker error: {e}")
+
+# 启动SSE工作线程
+sse_thread = threading.Thread(target=sse_worker, daemon=True)
+sse_thread.start()
 
 def parse_sensor_string(data_string):
     """
@@ -55,6 +89,43 @@ def parse_sensor_string(data_string):
     except Exception as e:
         raise ValueError(f'Failed to parse sensor string: {str(e)}')
 
+@app.route('/sensor-events')
+def sensor_events():
+    """SSE端点，用于实时推送传感器数据"""
+    def event_stream():
+        # 为每个客户端创建一个队列
+        client_queue = queue.Queue()
+        sse_clients.add(client_queue)
+
+        try:
+            # 发送初始连接确认
+            yield f"data: {json.dumps({'type': 'connected', 'message': 'SSE连接已建立'})}\n\n"
+
+            # 持续监听队列中的消息
+            while True:
+                try:
+                    message = client_queue.get(timeout=30)  # 30秒超时，防止连接挂起
+                    if message:
+                        yield message
+                except queue.Empty:
+                    # 发送心跳包保持连接
+                    yield f"data: {json.dumps({'type': 'heartbeat', 'timestamp': time.time()})}\n\n"
+                except Exception as e:
+                    print(f"SSE stream error: {e}")
+                    break
+
+        finally:
+            # 客户端断开时清理
+            sse_clients.discard(client_queue)
+
+    return Response(event_stream(),
+                   mimetype='text/event-stream',
+                   headers={
+                       'Cache-Control': 'no-cache',
+                       'Connection': 'keep-alive',
+                       'Access-Control-Allow-Origin': '*'
+                   })
+
 @app.route('/sensor-data', methods=['POST'])
 def receive_sensor_data():
     try:
@@ -84,6 +155,21 @@ def receive_sensor_data():
         print(f"Received and saved sensor data: ID={sensor_reading['id']}, "
               f"H={sensor_reading['humidity']}%, T={sensor_reading['temperature']}°C, "
               f"L={sensor_reading['light_intensity']} lux, S={sensor_reading['servo_angle']}°")
+
+        # 通过SSE广播新数据到所有连接的客户端
+        update_data = {
+            'type': 'sensor_update',
+            'data': {
+                'id': sensor_reading['id'],
+                'humidity': sensor_reading['humidity'],
+                'temperature': sensor_reading['temperature'],
+                'light_intensity': sensor_reading['light_intensity'],
+                'servo_angle': sensor_reading['servo_angle'],
+                'timestamp': sensor_reading['timestamp']
+            }
+        }
+        data_update_queue.put(update_data)
+        print(f"Broadcasted sensor update via SSE: {update_data}")
 
         return jsonify({
             'status': 'success',

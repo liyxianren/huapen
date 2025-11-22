@@ -5,13 +5,15 @@ let previousData = {};
 let currentQuery = null; // 当前查询状态
 let isLogPaused = false; // 日志暂停状态
 let maxLogEntries = 100; // 最大日志条数
+let eventSource = null; // SSE连接
+let isRealTimeEnabled = true; // 实时更新开关
 
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     initializeChart();
     initializeLog(); // 初始化日志系统
+    initializeSSE(); // 初始化SSE连接
     loadData(); // 初始加载一次数据
-    // 移除自动轮询，改为手动点击按钮更新
 
     // 刷新按钮事件
     document.getElementById('refreshBtn').addEventListener('click', loadData);
@@ -110,6 +112,161 @@ function initializeChart() {
     });
 }
 
+// 初始化SSE连接
+function initializeSSE() {
+    if (eventSource) {
+        eventSource.close();
+    }
+
+    try {
+        eventSource = new EventSource('/sensor-events');
+
+        eventSource.onopen = function() {
+            addLog('info', '🔗 SSE连接已建立，等待实时传感器数据...');
+            updateStatus('online');
+        };
+
+        eventSource.onmessage = function(event) {
+            try {
+                const data = JSON.parse(event.data);
+
+                if (data.type === 'connected') {
+                    addLog('success', '✅ ' + data.message);
+                } else if (data.type === 'sensor_update') {
+                    // 接收到新的传感器数据
+                    handleRealTimeUpdate(data.data);
+                } else if (data.type === 'heartbeat') {
+                    // 心跳包，保持连接
+                    console.log('SSE heartbeat received');
+                }
+            } catch (error) {
+                console.error('Error parsing SSE message:', error);
+                addLog('error', `❌ 解析SSE消息失败: ${error.message}`);
+            }
+        };
+
+        eventSource.onerror = function(event) {
+            console.error('SSE error:', event);
+            addLog('error', '❌ SSE连接错误，尝试重新连接...');
+
+            // 3秒后重新连接
+            setTimeout(() => {
+                if (isRealTimeEnabled) {
+                    initializeSSE();
+                }
+            }, 3000);
+        };
+
+    } catch (error) {
+        console.error('Error initializing SSE:', error);
+        addLog('error', `❌ SSE初始化失败: ${error.message}`);
+    }
+}
+
+// 处理实时数据更新
+function handleRealTimeUpdate(newData) {
+    // 如果处于查询状态，不更新图表和表格，但仍更新数据卡片
+    const isQueryMode = currentQuery !== null;
+
+    // 添加日志
+    addLog('success', '🔄 接收到实时传感器数据', {
+        '湿度': newData.humidity + '%',
+        '温度': newData.temperature + '°C',
+        '光照': newData.light_intensity + 'lux',
+        '时间': formatTime(newData.timestamp),
+        'ID': newData.id
+    });
+
+    // 更新数据卡片 - 这是最重要的！
+    updateRealTimeCards(newData);
+
+    // 如果不是查询模式，更新图表和表格
+    if (!isQueryMode) {
+        // 检查是否是新数据（避免重复添加）
+        const isDuplicate = sensorData.some(item => item.id === newData.id);
+        if (!isDuplicate) {
+            sensorData.push(newData);
+
+            // 限制数据量，保持性能
+            if (sensorData.length > 100) {
+                sensorData = sensorData.slice(-50);
+            }
+
+            // 更新趋势
+            if (sensorData.length > 1) {
+                const previousLatest = sensorData[sensorData.length - 2];
+                updateTrends(newData, previousLatest);
+            }
+
+            // 更新图表
+            updateChart();
+            updateTable();
+        }
+    }
+
+    // 更新统计信息
+    document.getElementById('totalRecords').textContent = sensorData.length;
+    document.getElementById('lastUpdate').textContent = formatTime(newData.timestamp);
+}
+
+// 实时更新数据卡片
+function updateRealTimeCards(latestData) {
+    try {
+        // 添加动画效果
+        const cards = [
+            { id: 'humidity', value: latestData.humidity, trendId: 'humidityTrend' },
+            { id: 'temperature', value: latestData.temperature, trendId: 'temperatureTrend' },
+            { id: 'lightIntensity', value: latestData.light_intensity, trendId: 'lightTrend' }
+        ];
+
+        cards.forEach(card => {
+            const element = document.getElementById(card.id);
+            const trendElement = document.getElementById(card.trendId);
+
+            if (element) {
+                // 获取当前值用于趋势比较
+                const currentValue = parseFloat(element.textContent);
+                const newValue = parseFloat(card.value);
+
+                // 更新数值
+                element.textContent = card.value;
+
+                // 添加高亮动画
+                element.style.transition = 'color 0.3s ease';
+                element.style.color = '#27ae60'; // 绿色高亮
+                setTimeout(() => {
+                    element.style.color = ''; // 恢复原色
+                }, 1000);
+
+                // 更新趋势指示器
+                if (trendElement && !isNaN(currentValue)) {
+                    const diff = newValue - currentValue;
+                    if (diff > 0) {
+                        trendElement.innerHTML = '↗';
+                        trendElement.className = 'card-trend trend-up';
+                    } else if (diff < 0) {
+                        trendElement.innerHTML = '↘';
+                        trendElement.className = 'card-trend trend-down';
+                    } else {
+                        trendElement.innerHTML = '→';
+                        trendElement.className = 'card-trend trend-stable';
+                    }
+                }
+            }
+        });
+
+        console.log('实时数据卡片更新完成:', {
+            humidity: latestData.humidity + '%',
+            temperature: latestData.temperature + '°C',
+            light: latestData.light_intensity + 'lux'
+        });
+
+    } catch (error) {
+        console.error('Error updating real-time cards:', error);
+        addLog('error', `❌ 更新数据卡片失败: ${error.message}`);
+    }
+}
+
 // 加载数据
 async function loadData() {
     // 如果处于查询状态，不自动刷新
@@ -192,19 +349,21 @@ function updateCards() {
     document.getElementById('lastUpdate').textContent = formatTime(latestData.timestamp);
 
     // 更新趋势指示器
-    updateTrends(latestData);
+    if (previousData.humidity) {
+        updateTrends(latestData, previousData);
+    }
 
     previousData = latestData;
 }
 
 // 更新趋势指示器
-function updateTrends(currentData) {
-    if (!previousData.humidity) return;
+function updateTrends(currentData, previous = previousData) {
+    if (!previous || !previous.humidity) return;
 
     const trends = [
-        { id: 'humidityTrend', current: currentData.humidity, previous: previousData.humidity },
-        { id: 'temperatureTrend', current: currentData.temperature, previous: previousData.temperature },
-        { id: 'lightTrend', current: currentData.light_intensity, previous: previousData.light_intensity }
+        { id: 'humidityTrend', current: currentData.humidity, previous: previous.humidity },
+        { id: 'temperatureTrend', current: currentData.temperature, previous: previous.temperature },
+        { id: 'lightTrend', current: currentData.light_intensity, previous: previous.light_intensity }
     ];
 
     trends.forEach(trend => {
