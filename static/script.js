@@ -6,6 +6,19 @@ let currentQuery = null; // 当前查询状态
 let isLogPaused = false; // 日志暂停状态
 let maxLogEntries = 100; // 最大日志条数
 
+// 数据更新状态管理
+let currentLatestId = null; // 当前最新数据ID
+let isUpdating = false;     // 是否正在更新数据
+let updateAttempts = 0;     // 更新尝试次数
+
+// 轮询配置
+const POLLING_CONFIG = {
+    initialDelay: 10000,    // 初始延迟10秒
+    interval: 2000,         // 轮询间隔2秒
+    maxAttempts: 15,        // 最大尝试15次 (30秒)
+    timeout: 45000          // 总超时45秒
+};
+
 // 初始化
 document.addEventListener('DOMContentLoaded', function() {
     initializeChart();
@@ -13,8 +26,14 @@ document.addEventListener('DOMContentLoaded', function() {
     loadData(); // 初始加载一次数据
     // 移除自动轮询，改为手动点击按钮更新
 
-    // 刷新按钮事件
-    document.getElementById('refreshBtn').addEventListener('click', loadData);
+    // 刷新按钮事件 - 使用新的轮询机制
+    document.getElementById('refreshBtn').addEventListener('click', updateSensorDataWithPolling);
+
+    // 更新数据按钮事件 - 使用新的轮询机制
+    const updateDataBtn = document.getElementById('updateDataBtn');
+    if (updateDataBtn) {
+        updateDataBtn.addEventListener('click', updateSensorDataWithPolling);
+    }
 
     // 查询按钮事件
     document.getElementById('queryByDateBtn').addEventListener('click', queryByDate);
@@ -132,6 +151,9 @@ async function loadData() {
         // 显示接收到的传感器数据
         if (sensorData.length > 0) {
             const latestData = sensorData[sensorData.length - 1];
+            // 更新当前最新数据ID
+            currentLatestId = latestData.id;
+
             addLog('receive', `📥 成功接收到Arduino Nano通过ESP8266发送的传感器数据`, {
                 数据流程: 'Arduino Nano (读取传感器) → ESP8266 (WiFi转发) → 网站 (显示)',
                 最新传感器数据: latestData,
@@ -139,6 +161,7 @@ async function loadData() {
                 数据接收时间: new Date().toLocaleString('zh-CN')
             });
         } else {
+            currentLatestId = null;
             addLog('warning', '⚠️ 暂无传感器数据，可能Arduino Nano还未通过ESP8266发送数据');
         }
 
@@ -151,6 +174,182 @@ async function loadData() {
         console.error('Error loading data:', error);
         addLog('error', `❌ 获取传感器数据失败: ${error.message}`);
         updateStatus('offline');
+    }
+}
+
+// 获取最新数据ID
+async function getLatestDataId() {
+    try {
+        const response = await fetch('/sensor-data/latest-id');
+        if (!response.ok) {
+            throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const result = await response.json();
+        return result.id;
+    } catch (error) {
+        console.error('获取最新数据ID失败:', error);
+        return null;
+    }
+}
+
+// 更新按钮状态
+function updateButtonStatus(text, disabled = true, forceRefresh = false) {
+    // 更新表格旁边的刷新按钮
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+        refreshBtn.innerHTML = text;
+        refreshBtn.disabled = disabled;
+    }
+
+    // 更新顶部的更新数据按钮
+    const updateDataBtn = document.getElementById('updateDataBtn');
+    if (updateDataBtn) {
+        updateDataBtn.innerHTML = text;
+        updateDataBtn.disabled = disabled;
+    }
+
+    addLog('info', `🔄 状态更新: ${text}`);
+}
+
+// 恢复按钮到原始状态
+function restoreButtonsToNormal() {
+    // 恢复表格旁边的刷新按钮
+    const refreshBtn = document.getElementById('refreshBtn');
+    if (refreshBtn) {
+        refreshBtn.innerHTML = '刷新数据';
+        refreshBtn.disabled = false;
+    }
+
+    // 恢复顶部的更新数据按钮
+    const updateDataBtn = document.getElementById('updateDataBtn');
+    if (updateDataBtn) {
+        updateDataBtn.innerHTML = '🔄 更新数据';
+        updateDataBtn.disabled = false;
+    }
+
+    addLog('info', '🔄 按钮状态已恢复');
+}
+
+// 轮询检查数据更新
+async function pollForDataUpdate(latestIdBefore) {
+    const startTime = Date.now();
+
+    for (let i = 0; i < POLLING_CONFIG.maxAttempts; i++) {
+        // 检查总超时
+        if (Date.now() - startTime > POLLING_CONFIG.timeout) {
+            addLog('warning', '⚠️ 数据更新检查超时');
+            return false;
+        }
+
+        updateButtonStatus(`检查数据中 (${i + 1}/${POLLING_CONFIG.maxAttempts})...`);
+        updateAttempts = i + 1;
+
+        // 等待轮询间隔
+        if (i > 0) {
+            await new Promise(resolve => setTimeout(resolve, POLLING_CONFIG.interval));
+        }
+
+        try {
+            const currentLatestId = await getLatestDataId();
+
+            if (currentLatestId && currentLatestId > latestIdBefore) {
+                addLog('success', `✅ 检测到新数据 (ID: ${currentLatestId} > ${latestIdBefore})`);
+                return true; // 数据已更新
+            }
+
+            addLog('info', `🔍 轮询检查 (${i + 1}/${POLLING_CONFIG.maxAttempts}): 当前ID ${currentLatestId}, 期待 > ${latestIdBefore}`);
+
+        } catch (error) {
+            addLog('error', `❌ 轮询检查失败: ${error.message}`);
+        }
+    }
+
+    addLog('warning', `⚠️ 轮询完成，未检测到新数据 (${POLLING_CONFIG.maxAttempts}次检查)`);
+    return false; // 未检测到数据更新
+}
+
+// 完整的数据更新流程
+async function updateSensorDataWithPolling() {
+    if (isUpdating) {
+        addLog('warning', '⚠️ 正在更新中，请等待');
+        return;
+    }
+
+    isUpdating = true;
+    updateAttempts = 0;
+
+    try {
+        // 1. 获取更新前的最新数据ID
+        const latestIdBefore = await getLatestDataId();
+        addLog('info', `📊 更新前最新数据ID: ${latestIdBefore}`);
+
+        // 2. 发送更新指令给ESP8266
+        const commandData = {
+            command: 'Dataup_0'
+        };
+
+        addLog('send', '🚀 网站发送指令给ESP8266', commandData);
+
+        const response = await fetch('/sensor-command', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(commandData)
+        });
+
+        const result = await response.json();
+
+        if (result.status === 'success') {
+            addLog('success', '✅ 指令发送成功，ESP8266将转发给Arduino Nano', result);
+            updateButtonStatus('等待传感器响应...');
+
+            // 3. 等待初始延迟（让ESP8266和Arduino Nano处理指令）
+            addLog('info', `⏳ 等待 ${POLLING_CONFIG.initialDelay/1000} 秒让传感器读取新数据...`);
+            await new Promise(resolve => setTimeout(resolve, POLLING_CONFIG.initialDelay));
+
+            // 4. 开始轮询检查数据更新
+            updateButtonStatus('开始轮询检查...');
+            const dataUpdated = await pollForDataUpdate(latestIdBefore);
+
+            if (dataUpdated) {
+                // 5. 数据已更新，重新加载完整数据
+                addLog('info', '🔄 正在重新加载传感器数据...');
+                await loadData();
+                updateButtonStatus('✅ 数据已更新');
+
+                // 3秒后恢复按钮状态
+                setTimeout(() => {
+                    restoreButtonsToNormal();
+                }, 3000);
+
+                addLog('success', '🎉 传感器数据更新完成');
+            } else {
+                // 轮询完成但未检测到新数据
+                updateButtonStatus('⚠️ 更新超时');
+
+                // 3秒后恢复按钮状态
+                setTimeout(() => {
+                    restoreButtonsToNormal();
+                }, 3000);
+            }
+
+        } else {
+            throw new Error(result.message || '指令发送失败');
+        }
+
+    } catch (error) {
+        console.error('更新传感器数据失败:', error);
+        addLog('error', `❌ 更新失败: ${error.message}`);
+        updateButtonStatus('❌ 更新失败');
+
+        // 3秒后恢复按钮状态
+        setTimeout(() => {
+            restoreButtonsToNormal();
+        }, 3000);
+    } finally {
+        isUpdating = false;
+        updateAttempts = 0;
     }
 }
 

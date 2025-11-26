@@ -587,6 +587,35 @@ def get_pending_command():
             'message': f'Failed to get pending command: {str(e)}'
         }), 500
 
+@app.route('/sensor-data/latest-id', methods=['GET'])
+def get_latest_data_id():
+    """获取最新数据的ID和时间戳，用于检测数据更新"""
+    try:
+        latest_data = db.get_latest_data()
+
+        if latest_data:
+            return jsonify({
+                'status': 'success',
+                'id': latest_data['id'],
+                'timestamp': latest_data['timestamp'],
+                'created_at': latest_data['created_at']
+            }), 200
+        else:
+            return jsonify({
+                'status': 'success',
+                'id': None,
+                'timestamp': None,
+                'created_at': None
+            }), 200
+
+    except Exception as e:
+        print(f"[ERROR] 获取最新数据ID时出错: {str(e)}")
+        return jsonify({
+            'status': 'error',
+            'message': f'Failed to get latest data ID: {str(e)}',
+            'id': None
+        }), 500
+
 @app.route('/admin')
 def admin_panel():
     """管理面板页面"""
